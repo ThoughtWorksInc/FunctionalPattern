@@ -7,16 +7,6 @@ import scala.language.implicitConversions
   */
 object covariant {
 
-//  trait DecoratorFactory {}
-
-//  trait FacadeFactory extends BoxFactory {
-//    type Value[A] = Unboxed[A]
-//
-//    def boxInstance[A](instance: Value[A]): Facade[A] = box(instance)
-//
-//    def unboxInstance[A](instance: Value[A]): Unboxed[A] = instance
-//  }
-
   trait Boxer {
 
     type Raw[A]
@@ -47,17 +37,13 @@ object covariant {
   }
 
   trait IOFactory {
-
     type Value[A]
-
     def liftIO[A](io: () => A): Value[A]
-
   }
 
-  trait TrampolineFactory extends FlatMapFactory with IOFactory {
-    def suspend[A](io: () => Value[A]): Value[A] = {
-      liftIO(io).flatten
-    }
+  trait TailCallFactory {
+    type Value[A]
+    def tailCall[A](tail: () => Value[A]): Value[A]
   }
 
   trait FunctorFactory {
@@ -139,15 +125,15 @@ object covariant {
 
   trait MonadErrorFactory extends MonadFactory {
 
-    type Error
+    type ErrorState
 
     type Facade[+A] <: MonadError[A]
 
     trait MonadError[+A] extends Any with Monad[A] {
-      def handleError[B >: A](catcher: PartialFunction[Error, Value[B]]): Value[B]
+      def handleError[B >: A](catcher: PartialFunction[ErrorState, Value[B]]): Value[B]
     }
 
-    def raiseError[A](e: Error): Value[A]
+    def raiseError[A](e: ErrorState): Value[A]
 
   }
 
