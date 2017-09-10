@@ -1,9 +1,8 @@
 package com.thoughtworks.designpattern
 import com.thoughtworks.designpattern.covariant._
+import com.thoughtworks.designpattern.io.IO
 
 import language.higherKinds
-import language.implicitConversions
-import scala.annotation.tailrec
 import scala.util.{Failure, Success, Try}
 import scala.util.control.NonFatal
 
@@ -12,48 +11,49 @@ import scala.util.control.NonFatal
   */
 object continuation {
 
-  trait ContinuationFactory extends MonadFactory with TailCallFactory {
-    type Facade[+A] <: Continuation[A]
+  trait LiftAsynchronousFactory {
     type Result
-
-    trait Continuation[+A] extends Monad[A] {
-      def listen(continue: A => Result): Result
-    }
-
-    trait FlatMap[+A] extends Continuation[A] {
-      this: Facade[A] =>
-      def flatMap[B](mapper: A => Value[B]): Value[B] = shift[B] { (continue: B => Result) =>
-        listen { a: A =>
-          mapper(a).listen(continue)
-        }
-      }
-    }
-
-    trait TailCall[+A] extends Continuation[A] {
-      def tail(): Continuation[A]
-      @tailrec final def listen(continue: (A) => Result): Result = {
-        tail() match {
-          case tailCall: TailCall[A] =>
-            tailCall.listen(continue)
-          case notTailCall =>
-            notTailCall.listen(continue)
-        }
-      }
-    }
-
-    def shift[A](f: (A => Result) => Result): Value[A]
-
-    def pure[A](a: A): Value[A] = shift[A](_(a))
+    type Value[A]
+    def liftAsynchronous[A](f: (A => Result) => Result): Value[A]
   }
 
-  trait StackSafeContinuationFactory extends ContinuationFactory {
+  trait ContinuationFactory extends MonadFactory with TailCallFactory with LiftAsynchronousFactory {
+    type Facade[+A] <: Continuation[A]
+
+    trait Continuation[+A] extends Monad[A] {
+      def apply(continue: A => Result): Result
+    }
+
+    protected trait DefaultFlatMap[+A] extends Continuation[A] {
+      this: Facade[A] =>
+      def flatMap[B](mapper: A => Value[B]): Value[B] = liftAsynchronous[B] { (continue: B => Result) =>
+        apply { a: A =>
+          mapper(a).apply(continue)
+        }
+      }
+    }
+
+    def liftAsynchronous[A](f: (A => Result) => Result): Value[A]
+
+    def pure[A](a: A): Value[A] = liftAsynchronous[A](_(a))
+  }
+  trait ContinuationTailCallFactory extends ContinuationFactory with TailCallFactory {
+
+    protected trait DefaultTailCallApply[A] extends DefaultTailCall[A] {
+      this: Value[A] =>
+      def apply(continue: A => Result): Result = last().apply(continue)
+    }
+
+  }
+  trait ContinuationTailCallFactoryDecorator extends ContinuationTailCallFactory {
     type UnderlyingFactory <: TailCallFactory
     val underlyingFactory: UnderlyingFactory
-    type ErrorState
-    type Result = underlyingFactory.Value[ErrorState]
-    def stackUnsafeShift[A](f: (A => Result) => Result): Value[A]
-    def shift[A](f: (A => Result) => Result): Value[A] = tailCall { () =>
-      stackUnsafeShift { continue =>
+    type State
+    type Result = underlyingFactory.Value[State]
+
+    def stackUnsafeLiftAsynchronous[A](f: (A => Result) => Result): Value[A]
+    def liftAsynchronous[A](f: (A => Result) => Result): Value[A] = tailCall { () =>
+      stackUnsafeLiftAsynchronous { continue =>
         underlyingFactory.tailCall { () =>
           f { a =>
             underlyingFactory.tailCall { () =>
@@ -65,23 +65,26 @@ object continuation {
     }
   }
 
-  trait ContinuationErrorFactory extends ContinuationFactory with MonadErrorFactory with StackSafeContinuationFactory {
-
+  trait ContinuationErrorFactory
+      extends ContinuationFactory
+      with MonadErrorFactory
+      with ContinuationTailCallFactory
+      with ContinuationTailCallFactoryDecorator {
     type UnderlyingFactory <: ContinuationFactory
-    type ErrorState = Throwable
+    type State = Throwable
 
-    def raiseError[A](e: ErrorState): Value[A] = shift[A] { (continueSuccess: A => Result) =>
+    def raiseError[A](e: State): Value[A] = liftAsynchronous[A] { (continueSuccess: A => Result) =>
       underlyingFactory.pure(e)
     }
 
     type Facade[+A] <: Continuation[A] with MonadError[A]
 
-    trait TryFlatMap[+A] extends Continuation[A] {
-      def flatMap[B](mapper: (A) => Value[B]): Value[B] = shift[B] { (continue: B => Result) =>
-        listen { a =>
+    protected trait DefaultMonadErrorFlatMap[+A] extends Continuation[A] {
+      def flatMap[B](mapper: (A) => Value[B]): Value[B] = liftAsynchronous[B] { (continue: B => Result) =>
+        apply { a =>
           Try(mapper(a)) match {
             case Success(valueB) =>
-              valueB.listen(continue)
+              valueB.apply(continue)
             case Failure(e) =>
               underlyingFactory.pure(e)
           }
@@ -89,54 +92,87 @@ object continuation {
       }
     }
 
-    trait HandleError[+A] extends Continuation[A] {
-      def handleError[B >: A](catcher: PartialFunction[ErrorState, Value[B]]): Value[B] = shift { (continueSuccess: B => Result) =>
-        underlyingFactory
-          .Facade(listen(continueSuccess))
-          .flatMap { e =>
-            val valueB: Value[B] = try {
-              catcher.applyOrElse[ErrorState, Value[B]](e, raiseError)
-            } catch {
-              case NonFatal(e) => raiseError(e)
+    protected trait DefaultHandleError[+A] extends Continuation[A] {
+      def handleError[B >: A](catcher: PartialFunction[State, Value[B]]): Value[B] = liftAsynchronous {
+        (continueSuccess: B => Result) =>
+          underlyingFactory
+            .Facade(apply(continueSuccess))
+            .flatMap { e =>
+              val valueB: Value[B] = try {
+                catcher.applyOrElse[State, Value[B]](e, raiseError)
+              } catch {
+                case NonFatal(e) => raiseError(e)
+              }
+              valueB.apply(continueSuccess)
             }
-            valueB.listen(continueSuccess)
-          }
       }
     }
   }
 
-  object UnitContinuation extends ContinuationFactory with IdentityFacadeFactory with IdentityBoxer {
+  object UnitContinuation
+      extends ContinuationFactory
+      with ContinuationTailCallFactory
+      with IdentityBoxer
+      with IdentityFacadeFactory {
+
     type Facade[+A] = Continuation[A]
     type Result = Unit
-    abstract class Shift[+A] extends FlatMap[A] with MapIsDerived[A] with FlattenIsDerived[A]
-    def shift[A](f: (A => Unit) => Unit): Shift[A] = f(_)
 
-    def tailCall[A](tail0: () => Continuation[A]): Continuation[A] = new Shift[A] with TailCall[A] {
-      def tail(): Continuation[A] = tail0()
-    }
+    abstract class SamLift[+A]
+        extends DefaultFlatMap[A]
+        with DefaultMap[A]
+        with DefaultFlatten[A]
+        with DefaultProduct[A]
+    def liftAsynchronous[A](f: (A => Result) => Result): SamLift[A] = f(_)
+
+    abstract class SamTailCall[A] extends SamLift[A] with DefaultTailCallApply[A]
+    def tailCall[A](tail: () => Facade[A]): SamTailCall[A] = () => tail()
   }
 
-  type UnitContinuation[+A] = UnitContinuation.Continuation[A]
-
-  object NaiveTask
-      extends ContinuationErrorFactory
-      with IdentityFacadeFactory
+  object IOContinuation
+      extends ContinuationFactory
+      with ContinuationTailCallFactoryDecorator
       with IdentityBoxer
-      with StackSafeContinuationFactory {
-    type UnderlyingFactory = UnitContinuation.type
-    val underlyingFactory: UnitContinuation.type = UnitContinuation
-    override type ErrorState = Throwable
+      with IdentityFacadeFactory {
+    type UnderlyingFactory = IO.type
+    val underlyingFactory: UnderlyingFactory = IO
+
+    type State = Unit
+    type Facade[+A] = Continuation[A]
+
+    abstract class SamLift[+A]
+        extends DefaultFlatMap[A]
+        with DefaultMap[A]
+        with DefaultFlatten[A]
+        with DefaultProduct[A]
+    def stackUnsafeLiftAsynchronous[A](f: (A => Result) => Result): SamLift[A] = f(_)
+
+    abstract class SamTailCall[A] extends SamLift[A] with DefaultTailCallApply[A]
+    def tailCall[A](tail: () => Continuation[A]): SamTailCall[A] = () => tail()
+
+  }
+
+  type IOContinuation[+A] = IOContinuation.Continuation[A]
+
+  object NaiveTask extends ContinuationErrorFactory with TailCallFactory with IdentityFacadeFactory with IdentityBoxer {
+
+    type UnderlyingFactory = IOContinuation.type
+    val underlyingFactory: IOContinuation.type = IOContinuation
+
     trait Facade[+A] extends Continuation[A] with MonadError[A]
-    abstract class Shift[+A]
-        extends HandleError[A]
-        with MapIsDerived[A]
-        with TryFlatMap[A]
-        with FlattenIsDerived[A]
+
+    abstract class SamLift[+A]
+        extends DefaultHandleError[A]
+        with DefaultMap[A]
+        with DefaultMonadErrorFlatMap[A]
+        with DefaultFlatten[A]
+        with DefaultProduct[A]
         with Facade[A]
-    def stackUnsafeShift[A](f: ((A) => UnitContinuation[Throwable]) => UnitContinuation[Throwable]): Shift[A] = f(_)
-    def tailCall[A](tail0: () => Facade[A]): Facade[A] = new Shift[A] with TailCall[A] {
-      def tail(): Facade[A] = tail0()
-    }
+
+    def stackUnsafeLiftAsynchronous[A](f: (A => Result) => Result): SamLift[A] = f(_)
+
+    abstract class SamTailCall[A] extends SamLift[A] with DefaultTailCallApply[A]
+    def tailCall[A](tail: () => Facade[A]): SamTailCall[A] = () => tail()
   }
 
   type NaiveTask[+A] = NaiveTask.Facade[A]

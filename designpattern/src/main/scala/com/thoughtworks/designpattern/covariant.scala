@@ -1,5 +1,6 @@
 package com.thoughtworks.designpattern
 import language.higherKinds
+import scala.annotation.tailrec
 import scala.language.implicitConversions
 
 /**
@@ -36,14 +37,25 @@ object covariant {
     type Value[+A] = Facade[A]
   }
 
-  trait IOFactory {
-    type Value[A]
-    def liftIO[A](io: () => A): Value[A]
-  }
-
   trait TailCallFactory {
+
+    def tailCall[A](tail: () => Value[A]): Value[A] with DefaultTailCall[A]
+
     type Value[A]
-    def tailCall[A](tail: () => Value[A]): Value[A]
+
+    protected trait DefaultTailCall[A] { this: Value[A] =>
+      def tail(): Value[A]
+
+      final def last(): Value[A] = {
+        tail() match {
+          case tailCall: DefaultTailCall[A] =>
+            tailCall.last()
+          case notTailCall =>
+            notTailCall
+        }
+      }
+    }
+
   }
 
   trait FunctorFactory {
@@ -59,13 +71,13 @@ object covariant {
 
   }
 
-  trait FlatMapFactory extends FunctorFactory with FacadeFactory {
+  trait FlatMapFactory extends FacadeFactory with ApplyFactory {
 
     type Value[A]
 
     type Facade[+A] <: FlatMap[A]
 
-    trait FlatMap[+A] extends Any with Functor[A] {
+    trait FlatMap[+A] extends Any with Apply[A] {
 
       def flatMap[B](mapper: A => Value[B]): Value[B]
       def flatten[B](implicit asInstanceB: A <:< Value[B]): Value[B]
@@ -76,33 +88,49 @@ object covariant {
       nested.flatten
     }
 
-    trait FlatMapIsPrimary[+A] extends Any with FlatMap[A] {
+    protected trait PrimaryFlatMap[+A] extends Any with FlatMap[A] {
 
-      /** An internal method that intends to make this [[FlatMapIsPrimary]] conflict with [[FlatMapIsDerived]]. */
-      protected def isFlatMapDerived = false
+      /** An internal method that intends to make this [[PrimaryFlatMap]] conflict with [[DefaultFlatMap]]. */
+      protected def isFlatMapPrimary = false
     }
 
-    trait FlatMapIsDerived[+A] extends Any with FlatMap[A] {
+    protected trait DefaultFlatMap[+A] extends Any with FlatMap[A] {
+
+      /** An internal method that intends to make this [[DefaultFlatMap]] conflict with [[PrimaryFlatMap]]. */
+      protected def isFlatMapPrimary = true
 
       def flatMap[B](mapper: (A) => Value[B]): Value[B] = {
         map(mapper).flatten
       }
-
-      /** An internal method that intends to make this [[FlatMapIsDerived]] conflict with [[FlatMapIsPrimary]]. */
-      protected def isFlatMapDerived = true
     }
 
-    trait FlattenIsDerived[+A] extends Any with FlatMapIsPrimary[A] { this: Facade[A] =>
-
+    protected trait DefaultFlatten[+A] extends Any with PrimaryFlatMap[A] { this: Facade[A] =>
       def flatten[B](implicit asInstanceB: A <:< Value[B]): Value[B] = {
         flatMap(asInstanceB)
       }
+    }
 
+    protected trait DefaultProduct[+A] extends Any with PrimaryFlatMap[A] {
+      def product[A1 >: A, B](that: Value[B]): Value[(A1, B)] = {
+        for {
+          a <- this
+          b <- that
+        } yield (a, b)
+      }
     }
 
   }
 
-  trait ApplicativeFactory extends FunctorFactory {
+  trait ApplyFactory extends FunctorFactory {
+    type Value[A]
+    type Facade[+A] <: Apply[A]
+
+    trait Apply[+A] extends Any with Functor[A] {
+      def product[A1 >: A, B](that: Value[B]): Value[(A1, B)]
+    }
+  }
+
+  trait ApplicativeFactory extends ApplyFactory {
     def pure[A](a: A): Value[A]
   }
 
@@ -110,7 +138,7 @@ object covariant {
 
     type Monad[+A] = FlatMap[A]
 
-    trait MapIsDerived[+A] extends Any with FlatMapIsPrimary[A] {
+    protected trait DefaultMap[+A] extends Any with PrimaryFlatMap[A] {
 
       def map[B](mapper: (A) => B): Value[B] = {
         // Assign MonadFactory to local in case of this Monad being captured by closures
@@ -125,15 +153,15 @@ object covariant {
 
   trait MonadErrorFactory extends MonadFactory {
 
-    type ErrorState
+    type State
 
     type Facade[+A] <: MonadError[A]
 
     trait MonadError[+A] extends Any with Monad[A] {
-      def handleError[B >: A](catcher: PartialFunction[ErrorState, Value[B]]): Value[B]
+      def handleError[B >: A](catcher: PartialFunction[State, Value[B]]): Value[B]
     }
 
-    def raiseError[A](e: ErrorState): Value[A]
+    def raiseError[A](e: State): Value[A]
 
   }
 
