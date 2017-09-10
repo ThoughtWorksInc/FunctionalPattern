@@ -154,7 +154,7 @@ object continuation {
 
   type IOContinuation[+A] = IOContinuation.Continuation[A]
 
-  object NaiveTask extends ContinuationErrorFactory with TailCallFactory with IdentityFacadeFactory with IdentityBoxer {
+  object Task extends ContinuationErrorFactory with TailCallFactory with IdentityFacadeFactory with IdentityBoxer {
 
     type UnderlyingFactory = IOContinuation.type
     val underlyingFactory: IOContinuation.type = IOContinuation
@@ -175,6 +175,6 @@ object continuation {
     def tailCall[A](tail: () => Facade[A]): SamTailCall[A] = () => tail()
   }
 
-  type NaiveTask[+A] = NaiveTask.Facade[A]
+  type Task[+A] = Task.Facade[A]
 
 }
