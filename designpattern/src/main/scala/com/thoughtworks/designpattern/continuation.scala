@@ -11,13 +11,13 @@ import scala.util.control.NonFatal
   */
 object continuation {
 
-  trait LiftAsynchronousFactory {
+  trait LiftContinuationFactory {
     type Result
     type Value[A]
-    def liftAsynchronous[A](f: (A => Result) => Result): Value[A]
+    def liftContinuation[A](listen: (A => Result) => Result): Value[A]
   }
 
-  trait ContinuationFactory extends MonadFactory with TailCallFactory with LiftAsynchronousFactory {
+  trait ContinuationFactory extends MonadFactory with TailCallFactory with LiftContinuationFactory {
     type Facade[+A] <: Continuation[A]
 
     trait Continuation[+A] extends Monad[A] {
@@ -26,16 +26,16 @@ object continuation {
 
     protected trait DefaultFlatMap[+A] extends Continuation[A] {
       this: Facade[A] =>
-      def flatMap[B](mapper: A => Value[B]): Value[B] = liftAsynchronous[B] { (continue: B => Result) =>
+      def flatMap[B](mapper: A => Value[B]): Value[B] = liftContinuation[B] { (continue: B => Result) =>
         apply { a: A =>
           mapper(a).apply(continue)
         }
       }
     }
 
-    def liftAsynchronous[A](f: (A => Result) => Result): Value[A]
+    def liftContinuation[A](f: (A => Result) => Result): Value[A]
 
-    def pure[A](a: A): Value[A] = liftAsynchronous[A](_(a))
+    def pure[A](a: A): Value[A] = liftContinuation[A](_(a))
   }
   trait ContinuationTailCallFactory extends ContinuationFactory with TailCallFactory {
 
@@ -51,9 +51,9 @@ object continuation {
     type State
     type Result = underlyingFactory.Value[State]
 
-    def stackUnsafeLiftAsynchronous[A](f: (A => Result) => Result): Value[A]
-    def liftAsynchronous[A](f: (A => Result) => Result): Value[A] = tailCall { () =>
-      stackUnsafeLiftAsynchronous { continue =>
+    def stackUnsafeLiftContinuation[A](f: (A => Result) => Result): Value[A]
+    def liftContinuation[A](f: (A => Result) => Result): Value[A] = tailCall { () =>
+      stackUnsafeLiftContinuation { continue =>
         underlyingFactory.tailCall { () =>
           f { a =>
             underlyingFactory.tailCall { () =>
@@ -73,14 +73,14 @@ object continuation {
     type UnderlyingFactory <: ContinuationFactory
     type State = Throwable
 
-    def raiseError[A](e: State): Value[A] = liftAsynchronous[A] { (continueSuccess: A => Result) =>
+    def raiseError[A](e: State): Value[A] = liftContinuation[A] { (continueSuccess: A => Result) =>
       underlyingFactory.pure(e)
     }
 
     type Facade[+A] <: Continuation[A] with MonadError[A]
 
     protected trait DefaultMonadErrorFlatMap[+A] extends Continuation[A] {
-      def flatMap[B](mapper: (A) => Value[B]): Value[B] = liftAsynchronous[B] { (continue: B => Result) =>
+      def flatMap[B](mapper: (A) => Value[B]): Value[B] = liftContinuation[B] { (continue: B => Result) =>
         apply { a =>
           Try(mapper(a)) match {
             case Success(valueB) =>
@@ -93,7 +93,7 @@ object continuation {
     }
 
     protected trait DefaultHandleError[+A] extends Continuation[A] {
-      def handleError[B >: A](catcher: PartialFunction[State, Value[B]]): Value[B] = liftAsynchronous {
+      def handleError[B >: A](catcher: PartialFunction[State, Value[B]]): Value[B] = liftContinuation {
         (continueSuccess: B => Result) =>
           underlyingFactory
             .Facade(apply(continueSuccess))
@@ -123,7 +123,7 @@ object continuation {
         with DefaultMap[A]
         with DefaultFlatten[A]
         with DefaultProduct[A]
-    def liftAsynchronous[A](f: (A => Result) => Result): SamLift[A] = f(_)
+    def liftContinuation[A](f: (A => Result) => Result): SamLift[A] = f(_)
 
     abstract class SamTailCall[A] extends SamLift[A] with DefaultTailCallApply[A]
     def tailCall[A](tail: () => Facade[A]): SamTailCall[A] = () => tail()
@@ -145,7 +145,7 @@ object continuation {
         with DefaultMap[A]
         with DefaultFlatten[A]
         with DefaultProduct[A]
-    def stackUnsafeLiftAsynchronous[A](f: (A => Result) => Result): SamLift[A] = f(_)
+    def stackUnsafeLiftContinuation[A](f: (A => Result) => Result): SamLift[A] = f(_)
 
     abstract class SamTailCall[A] extends SamLift[A] with DefaultTailCallApply[A]
     def tailCall[A](tail: () => Continuation[A]): SamTailCall[A] = () => tail()
@@ -169,7 +169,7 @@ object continuation {
         with DefaultProduct[A]
         with Facade[A]
 
-    def stackUnsafeLiftAsynchronous[A](f: (A => Result) => Result): SamLift[A] = f(_)
+    def stackUnsafeLiftContinuation[A](f: (A => Result) => Result): SamLift[A] = f(_)
 
     abstract class SamTailCall[A] extends SamLift[A] with DefaultTailCallApply[A]
     def tailCall[A](tail: () => Facade[A]): SamTailCall[A] = () => tail()
