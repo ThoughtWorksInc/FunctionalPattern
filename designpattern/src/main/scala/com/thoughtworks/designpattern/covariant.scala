@@ -47,13 +47,22 @@ object covariant {
       def tail(): Value[A]
 
       final def last(): Value[A] = {
-        tail() match {
-          case tailCall: DefaultTailCall[A] =>
-            tailCall.last()
-          case notTailCall =>
-            notTailCall
+        var i: Value[A] = tail()
+        while (i.isInstanceOf[DefaultTailCall[A]]) {
+          i = i.asInstanceOf[DefaultTailCall[A]].tail()
         }
+        i
       }
+// The tail call version does not work because of https://github.com/scala/bug/issues/10493
+//      @tailrec
+//      final def last(): Value[A] = {
+//        tail() match {
+//          case tailCall: DefaultTailCall[_] =>
+//            tailCall.last()
+//          case notTailCall =>
+//            notTailCall
+//        }
+//      }
     }
 
   }
@@ -121,17 +130,25 @@ object covariant {
 
   }
 
-  trait ApplyFactory extends FunctorFactory {
+  trait CartesianFactory {
     type Value[A]
-    type Facade[+A] <: Apply[A]
+    type Facade[+A] <: Cartesian[A]
 
-    trait Apply[+A] extends Any with Functor[A] {
+    trait Cartesian[+A] extends Any {
       def product[A1 >: A, B](that: Value[B]): Value[(A1, B)]
     }
   }
 
+  trait ApplyFactory extends CartesianFactory with FunctorFactory {
+
+    type Facade[+A] <: Apply[A]
+    trait Apply[+A] extends Any with Functor[A] with Cartesian[A]
+
+  }
+
   trait ApplicativeFactory extends ApplyFactory {
     def pure[A](a: A): Value[A]
+
   }
 
   trait MonadFactory extends FlatMapFactory with ApplicativeFactory {
@@ -140,6 +157,7 @@ object covariant {
 
     protected trait DefaultMap[+A] extends Any with PrimaryFlatMap[A] {
 
+      @noinline
       def map[B](mapper: (A) => B): Value[B] = {
         // Assign MonadFactory to local in case of this Monad being captured by closures
         val monadFactory: MonadFactory.this.type = MonadFactory.this
