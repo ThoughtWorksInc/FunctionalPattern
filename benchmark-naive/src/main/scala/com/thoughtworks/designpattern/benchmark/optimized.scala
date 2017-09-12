@@ -45,8 +45,6 @@ object optimized {
     abstract class SamTailCall[A] extends SamLiftContinuation[A] with DefaultTailCallApply[A]
     def tailCall[A](tail: () => Facade[A]): SamTailCall[A] = () => tail()
 
-    def bindTailCall[A, B](tail: A => Facade[B], a: A): SamTailCall[B] = () => tail(a)
-
   }
 
   type UnitContinuation[+A] = UnitContinuation.Facade[A]
@@ -79,7 +77,7 @@ object optimized {
       override def map[B](mapper: A => B): SamLiftContinuation[B] = { (continue: B => Result) =>
         Try(mapper(run())) match {
           case Success(b) =>
-            UnitContinuation.bindTailCall(continue, b)
+            tailContinue(continue, b)
           case Failure(e) =>
             UnitContinuation.pure(e)
         }
@@ -88,7 +86,7 @@ object optimized {
       def flatMap[B](mapper: (A) => Facade[B]): SamLiftContinuation[B] = { (continue: B => Result) =>
         Try(mapper(run())) match {
           case Success(continuationB) =>
-            bindStart(continuationB)(continue)
+            continuationB.tailStart(continue)
           case Failure(e) =>
             UnitContinuation.pure(e)
         }
@@ -97,7 +95,7 @@ object optimized {
       def start(continueSuccess: A => Result) = {
         Try(run()) match {
           case Success(a) =>
-            UnitContinuation.bindTailCall(continueSuccess, a)
+            tailContinue(continueSuccess, a)
           case Failure(e) =>
             UnitContinuation.pure(e)
         }
@@ -112,12 +110,13 @@ object optimized {
 
     type UnderlyingFactory = UnitContinuation.type
     val underlyingFactory: UnitContinuation.type = UnitContinuation
-
-    def bindStart[A](facade: Facade[A])(continue: A => Result): UnitContinuation.SamTailCall[Throwable] = { () =>
-      facade.start(continue)
-    }
+    def tailContinue[A](continue: A => Result, a: A): UnitContinuation.SamTailCall[Throwable] = () => continue(a)
 
     abstract class Facade[+A] extends Continuation[A] with MonadError[A] {
+
+      def tailStart(continue: A => Result): UnitContinuation.SamTailCall[Throwable] = { () =>
+        start(continue)
+      }
       def blockingAwait(): A = {
         val syncVar = new SyncVar[Try[A]]
         val () = start { a =>
@@ -138,20 +137,20 @@ object optimized {
         with DefaultProduct[A] {
 
       def map[B](mapper: A => B): SamLiftContinuation[B] = { (continue: B => Result) =>
-        bindStart(this) { a: A =>
+        tailStart { a: A =>
           Try(mapper(a)) match {
             case Success(b) =>
-              UnitContinuation.bindTailCall(continue, b)
+              tailContinue(continue, b)
             case Failure(e) =>
               UnitContinuation.pure(e)
           }
         }
       }
       def flatMap[B](mapper: A => Facade[B]): SamLiftContinuation[B] = { (continue: B => Result) =>
-        bindStart(this) { a: A =>
+        tailStart { a: A =>
           Try(mapper(a)) match {
             case Success(continuationB) =>
-              bindStart(continuationB)(continue)
+              continuationB.tailStart(continue)
             case Failure(e) =>
               UnitContinuation.pure(e)
           }
