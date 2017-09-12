@@ -15,7 +15,12 @@ object io {
     def liftIO[A](io: () => A): Value[A]
   }
 
-  trait IOFactory extends LiftIOFactory with MonadErrorFactory with TailCallFactory with IdentityFacadeFactory {
+  trait IOFactory
+      extends FlatMapFacadeFactory
+      with LiftIOFactory
+      with MonadErrorFactory
+      with TailCallFactory
+      with IdentityFacadeFactory {
     type State = Throwable
 
     type Facade[+A] <: IO[A]
@@ -46,6 +51,5 @@ object io {
       }
     }
   }
-
 
 }

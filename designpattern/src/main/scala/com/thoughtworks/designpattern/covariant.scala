@@ -80,7 +80,7 @@ object covariant {
 
   }
 
-  trait FlatMapFactory extends FacadeFactory with ApplyFactory {
+  trait FlatMapFactory extends ApplyFactory {
 
     type Value[A]
 
@@ -92,15 +92,24 @@ object covariant {
       def flatten[B](implicit asInstanceB: A <:< Value[B]): Value[B]
     }
 
-    /** @note this method is designed for Java users only */
-    final def flatten[A](nested: Value[Value[A]]): Value[A] = {
-      nested.flatten
-    }
-
     protected trait PrimaryFlatMap[+A] extends Any with FlatMap[A] {
 
       /** An internal method that intends to make this [[PrimaryFlatMap]] conflict with [[DefaultFlatMap]]. */
       protected def isFlatMapPrimary = false
+    }
+
+    protected trait DefaultFlatten[+A] extends Any with PrimaryFlatMap[A] { this: Facade[A] =>
+      def flatten[B](implicit asInstanceB: A <:< Value[B]): Value[B] = {
+        flatMap(asInstanceB)
+      }
+    }
+  }
+
+  trait FlatMapFacadeFactory extends FacadeFactory with FlatMapFactory {
+
+    /** @note this method is designed for Java users only */
+    final def flatten[A](nested: Value[Value[A]]): Value[A] = {
+      nested.flatten
     }
 
     protected trait DefaultFlatMap[+A] extends Any with FlatMap[A] {
@@ -113,17 +122,11 @@ object covariant {
       }
     }
 
-    protected trait DefaultFlatten[+A] extends Any with PrimaryFlatMap[A] { this: Facade[A] =>
-      def flatten[B](implicit asInstanceB: A <:< Value[B]): Value[B] = {
-        flatMap(asInstanceB)
-      }
-    }
-
     protected trait DefaultProduct[+A] extends Any with PrimaryFlatMap[A] {
       def product[A1 >: A, B](that: Value[B]): Value[(A1, B)] = {
         for {
           a <- this
-          b <- that
+          b <- Facade(that)
         } yield (a, b)
       }
     }

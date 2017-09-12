@@ -17,7 +17,11 @@ object continuation {
     def liftContinuation[A](start: (A => Result) => Result): Value[A]
   }
 
-  trait ContinuationFactory extends MonadFactory with LiftContinuationFactory with TailCallFactory {
+  trait ContinuationFactory
+      extends FlatMapFacadeFactory
+      with MonadFactory
+      with LiftContinuationFactory
+      with TailCallFactory {
     type Facade[+A] <: Continuation[A]
 
     trait Continuation[+A] extends Monad[A] {
@@ -56,7 +60,7 @@ object continuation {
       extends ContinuationFactoryDecorator
       with LiftIOFactory
       with LiftContinuationFactory {
-    type UnderlyingFactory <: LiftIOFactory with FlatMapFactory with FacadeFactory
+    type UnderlyingFactory <: FacadeFactory with LiftIOFactory with FlatMapFactory
 
     def liftIO[A](io: () => A) = liftContinuation { continue =>
       underlyingFactory.Facade(underlyingFactory.liftIO(io)).flatMap(continue)
@@ -78,7 +82,7 @@ object continuation {
   }
 
   trait ContinuationErrorFactory extends ContinuationFactory with MonadErrorFactory with ContinuationFactoryDecorator {
-    type UnderlyingFactory <: MonadFactory with FacadeFactory
+    type UnderlyingFactory <: FacadeFactory with MonadFactory
     type State = Throwable
 
     def raiseError[A](e: State): Value[A] = liftContinuation[A] { (continueSuccess: A => Result) =>
