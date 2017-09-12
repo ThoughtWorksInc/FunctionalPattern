@@ -78,7 +78,7 @@ object optimized {
             Try(io()) match {
               case Success(a) =>
                 // Note: continueSuccess provided by map or flatMap,
-                // may turn a successful execution to a failure state.
+                // may turn a successful execution into a failed state.
                 // This is a feature!
                 continueSuccess(a).start(continueFailure)
               case Failure(e) =>
