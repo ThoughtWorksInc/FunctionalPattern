@@ -72,9 +72,10 @@ object continuation {
 
     trait DefaultTailCallStart[+A] extends Continuation[A] {
       def start(continue: A => Result): Result = {
-        stackUnsafeStart { a =>
-          underlyingFactory.tailCall(() => continue(a))
-        }
+        underlyingFactory.tailCall(() =>
+          stackUnsafeStart { a =>
+            underlyingFactory.tailCall(() => continue(a))
+        })
       }
       def stackUnsafeStart(continue: A => Result): Result
     }

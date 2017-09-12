@@ -1,3 +1,3 @@
 enablePlugins(Optimization)
 
-//scalacOptions += "-Ydelambdafy:inline"
+scalacOptions += "-Ydelambdafy:inline"
