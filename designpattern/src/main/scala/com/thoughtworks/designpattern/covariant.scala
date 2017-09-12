@@ -79,21 +79,21 @@ object covariant {
 
   }
 
-  trait FlatMapFactory extends ApplyFactory {
+  trait FlatFunctorFactory extends ApplyFactory {
 
     type Value[A]
 
-    type Facade[+A] <: FlatMap[A]
+    type Facade[+A] <: FlatFunctor[A]
 
-    trait FlatMap[+A] extends Any with Apply[A] {
+    trait FlatFunctor[+A] extends Any with Apply[A] {
 
       def flatMap[B](mapper: A => Value[B]): Value[B]
       def flatten[B](implicit asInstanceB: A <:< Value[B]): Value[B]
     }
 
-    protected trait PrimaryFlatMap[+A] extends Any with FlatMap[A] {
+    protected trait PrimaryFlatMap[+A] extends Any with FlatFunctor[A] {
 
-      /** An internal method that intends to make this [[PrimaryFlatMap]] conflict with [[DefaultFlatMap]]. */
+      /** An internal method that intends to make this [[PrimaryFlatMap]] conflict with [[FlatFunctorFacadeFactory.DefaultFlatMap]]. */
       protected def isFlatMapPrimary = false
     }
 
@@ -104,14 +104,14 @@ object covariant {
     }
   }
 
-  trait FlatMapFacadeFactory extends FacadeFactory with FlatMapFactory {
+  trait FlatFunctorFacadeFactory extends FacadeFactory with FlatFunctorFactory {
 
     /** @note this method is designed for Java users only */
     final def flatten[A](nested: Value[Value[A]]): Value[A] = {
       nested.flatten
     }
 
-    protected trait DefaultFlatMap[+A] extends Any with FlatMap[A] {
+    protected trait DefaultFlatMap[+A] extends Any with FlatFunctor[A] {
 
       /** An internal method that intends to make this [[DefaultFlatMap]] conflict with [[PrimaryFlatMap]]. */
       protected def isFlatMapPrimary = true
@@ -153,9 +153,9 @@ object covariant {
 
   }
 
-  trait MonadFactory extends FlatMapFactory with ApplicativeFactory {
+  trait MonadFactory extends FlatFunctorFactory with ApplicativeFactory {
 
-    type Monad[+A] = FlatMap[A]
+    type Monad[+A] = FlatFunctor[A]
 
     protected trait DefaultMap[+A] extends Any with PrimaryFlatMap[A] {
 

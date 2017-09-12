@@ -16,7 +16,7 @@ object io {
   }
 
   trait IOFactory
-      extends FlatMapFacadeFactory
+      extends FlatFunctorFacadeFactory
       with LiftIOFactory
       with MonadErrorFactory
       with TailCallFactory

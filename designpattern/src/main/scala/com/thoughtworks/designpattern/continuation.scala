@@ -18,7 +18,7 @@ object continuation {
   }
 
   trait ContinuationFactory
-      extends FlatMapFacadeFactory
+      extends FlatFunctorFacadeFactory
       with MonadFactory
       with LiftContinuationFactory
       with TailCallFactory {
@@ -60,7 +60,7 @@ object continuation {
       extends ContinuationFactoryDecorator
       with LiftIOFactory
       with LiftContinuationFactory {
-    type UnderlyingFactory <: FacadeFactory with LiftIOFactory with FlatMapFactory
+    type UnderlyingFactory <: FacadeFactory with LiftIOFactory with FlatFunctorFactory
 
     def liftIO[A](io: () => A) = liftContinuation { continue =>
       underlyingFactory.Facade(underlyingFactory.liftIO(io)).flatMap(continue)
