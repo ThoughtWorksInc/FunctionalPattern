@@ -134,18 +134,12 @@ object naive {
         with DefaultMonadErrorFlatMap[A]
         with DefaultFlatten[A]
         with DefaultProduct[A]
-        with DefaultTailCallStart[A]
 
-    def liftContinuation[A](start: (A => Result) => Result): SamLiftContinuation[A] = start(_)
+    abstract class SamTailStart[+A] extends SamLiftContinuation[A] with DefaultTailCallStart[A]
 
-    abstract class SamTailCall[A]
-        extends Facade[A]
-        with DefaultHandleError[A]
-        with DefaultMap[A]
-        with DefaultMonadErrorFlatMap[A]
-        with DefaultFlatten[A]
-        with DefaultProduct[A]
-        with DefaultTailCallApply[A]
+    def liftContinuation[A](start: (A => Result) => Result): SamTailStart[A] = start(_)
+
+    abstract class SamTailCall[A] extends SamLiftContinuation[A] with DefaultTailCallApply[A]
     def tailCall[A](tail: () => Facade[A]): SamTailCall[A] = () => tail()
   }
 
