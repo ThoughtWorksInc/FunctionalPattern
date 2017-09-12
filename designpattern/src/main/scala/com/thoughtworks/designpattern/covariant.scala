@@ -1,6 +1,5 @@
 package com.thoughtworks.designpattern
 import language.higherKinds
-import scala.annotation.tailrec
 import scala.language.implicitConversions
 
 /**

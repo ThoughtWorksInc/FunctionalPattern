@@ -94,11 +94,8 @@ object continuation {
     protected trait DefaultMonadErrorFlatMap[+A] extends Continuation[A] {
       def flatMap[B](mapper: A => Value[B]): Value[B] = liftContinuation[B] { (continue: B => Result) =>
         start { a: A =>
-          Try(mapper(a)) match {
-            case Success(valueB) =>
-              valueB.start(continue)
-            case Failure(e) =>
-              underlyingFactory.pure(e)
+          underlyingFactory.Facade(underlyingFactory.pure(a)).flatMap { a: A =>
+            mapper(a).start(continue)
           }
         }
       }

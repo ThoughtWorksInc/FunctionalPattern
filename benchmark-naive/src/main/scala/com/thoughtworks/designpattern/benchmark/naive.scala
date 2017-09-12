@@ -13,10 +13,11 @@ import scala.util.{Failure, Success, Try}
 object naive {
 
   object IO extends IOFactory {
-    type Facade[+A] = IO[A]
+    abstract class Facade[+A] extends IO[A]
 
     abstract class SamLiftIO[+A]
-        extends DefaultFlatMap[A]
+        extends Facade[A]
+        with DefaultFlatMap[A]
         with DefaultFlatten[A]
         with DefaultMap[A]
         with DefaultProduct[A]
