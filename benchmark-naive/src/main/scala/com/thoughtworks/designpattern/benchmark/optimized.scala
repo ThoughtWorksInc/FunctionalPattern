@@ -30,7 +30,7 @@ object optimized {
       }
     }
 
-    abstract class Facade[+A] extends Continuation[A]
+    type Facade[+A] = UnitContinuation[A]
     type Result = Unit
 
     abstract class SamLiftContinuation[+A]
@@ -47,23 +47,45 @@ object optimized {
 
   }
 
-  type UnitContinuation[+A] = UnitContinuation.Facade[A]
+  abstract class UnitContinuation[+A] extends UnitContinuation.Continuation[A]
+
+  abstract class Task[+A] extends Task.Continuation[A] with Task.MonadError[A] {
+    import Task._
+    private[Task] def tailStart(continue: A => Result): UnitContinuation.SamTailCall[Throwable] = { () =>
+      start(continue)
+    }
+    def blockingAwait(): A = {
+      val syncVar = new SyncVar[Try[A]]
+      val () = start { a =>
+        { continueFailure: (Throwable => Unit) =>
+          syncVar.put(Success(a))
+        }: UnitContinuation.SamLiftContinuation[Throwable]
+      }.start { e =>
+        syncVar.put(Failure(e))
+      }
+      syncVar.take.get
+    }
+  }
 
   object Task extends ContinuationErrorFactory with IdentityFacadeFactory with IdentityBoxer with LiftIOFactory {
 
-    def execute[A](io: () => A)(implicit executionContext: ExecutionContext) = liftContinuation[A] {
+    type Facade[+A] = Task[A]
+
+    def execute[A](io: () => A)(implicit executionContext: ExecutionContext): SamLiftContinuation[A] = {
       (continueSuccess: A => Result) =>
-        UnitContinuation.liftContinuation[Throwable] { continueFailure =>
+        { continueFailure: (Throwable => Unit) =>
           executionContext.execute { () =>
             Try(io()) match {
               case Success(a) =>
+                // Note: continueSuccess provided by map or flatMap,
+                // may turn a success execution to a failure state,
+                // This is a feature!
                 continueSuccess(a).start(continueFailure)
               case Failure(e) =>
                 continueFailure(e)
             }
           }
-
-        }
+        }: UnitContinuation.SamLiftContinuation[Throwable]
     }
 
     abstract class SamLiftIO[+A]
@@ -112,24 +134,6 @@ object optimized {
     val underlyingFactory: UnitContinuation.type = UnitContinuation
     def tailContinue[A](continue: A => Result, a: A): UnitContinuation.SamTailCall[Throwable] = () => continue(a)
 
-    abstract class Facade[+A] extends Continuation[A] with MonadError[A] {
-
-      def tailStart(continue: A => Result): UnitContinuation.SamTailCall[Throwable] = { () =>
-        start(continue)
-      }
-      def blockingAwait(): A = {
-        val syncVar = new SyncVar[Try[A]]
-        val () = start { a =>
-          UnitContinuation.liftContinuation[State] { continueFailure =>
-            syncVar.put(Success(a))
-          }
-        }.start { e =>
-          syncVar.put(Failure(e))
-        }
-        syncVar.take.get
-      }
-    }
-
     abstract class SamLiftContinuation[+A]
         extends Facade[A]
         with DefaultHandleError[A]
@@ -174,5 +178,4 @@ object optimized {
 
   }
 
-  type Task[+A] = Task.Facade[A]
 }

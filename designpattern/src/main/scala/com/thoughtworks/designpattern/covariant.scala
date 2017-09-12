@@ -42,7 +42,7 @@ object covariant {
 
     type Value[A]
 
-    protected trait DefaultTailCall[A] { this: Value[A] =>
+    trait DefaultTailCall[A] { this: Value[A] =>
       def tail(): Value[A]
 
       final def last(): Value[A] = {
@@ -91,13 +91,13 @@ object covariant {
       def flatten[B](implicit asInstanceB: A <:< Value[B]): Value[B]
     }
 
-    protected trait PrimaryFlatMap[+A] extends Any with FlatFunctor[A] {
+    trait PrimaryFlatMap[+A] extends Any with FlatFunctor[A] {
 
       /** An internal method that intends to make this [[PrimaryFlatMap]] conflict with [[FlatFunctorFacadeFactory.DefaultFlatMap]]. */
       protected def isFlatMapPrimary = false
     }
 
-    protected trait DefaultFlatten[+A] extends Any with PrimaryFlatMap[A] { this: Facade[A] =>
+    trait DefaultFlatten[+A] extends Any with PrimaryFlatMap[A] { this: Facade[A] =>
       def flatten[B](implicit asInstanceB: A <:< Value[B]): Value[B] = {
         flatMap(asInstanceB)
       }
@@ -111,7 +111,7 @@ object covariant {
       nested.flatten
     }
 
-    protected trait DefaultFlatMap[+A] extends Any with FlatFunctor[A] {
+    trait DefaultFlatMap[+A] extends Any with FlatFunctor[A] {
 
       /** An internal method that intends to make this [[DefaultFlatMap]] conflict with [[PrimaryFlatMap]]. */
       protected def isFlatMapPrimary = true
@@ -121,7 +121,7 @@ object covariant {
       }
     }
 
-    protected trait DefaultProduct[+A] extends Any with PrimaryFlatMap[A] {
+    trait DefaultProduct[+A] extends Any with PrimaryFlatMap[A] {
       def product[A1 >: A, B](that: Value[B]): Value[(A1, B)] = {
         for {
           a <- this
@@ -157,7 +157,7 @@ object covariant {
 
     type Monad[+A] = FlatFunctor[A]
 
-    protected trait DefaultMap[+A] extends Any with PrimaryFlatMap[A] {
+    trait DefaultMap[+A] extends Any with PrimaryFlatMap[A] {
 
       @noinline
       def map[B](mapper: (A) => B): Value[B] = {
