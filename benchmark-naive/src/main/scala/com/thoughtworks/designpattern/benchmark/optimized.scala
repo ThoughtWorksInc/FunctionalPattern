@@ -75,27 +75,31 @@ object optimized {
       def run(): A
 
       override def map[B](mapper: A => B): SamLiftContinuation[B] = { (continue: B => Result) =>
-        Try(mapper(run())) match {
-          case Success(b) =>
-            tailContinue(continue, b)
-          case Failure(e) =>
-            UnitContinuation.pure(e)
-        }
+        { () =>
+          Try(mapper(run())) match {
+            case Success(b) =>
+              continue(b)
+            case Failure(e) =>
+              UnitContinuation.pure(e)
+          }
+        }: UnitContinuation.SamTailCall[Throwable]
       }
 
       def flatMap[B](mapper: (A) => Facade[B]): SamLiftContinuation[B] = { (continue: B => Result) =>
-        Try(mapper(run())) match {
-          case Success(continuationB) =>
-            continuationB.tailStart(continue)
-          case Failure(e) =>
-            UnitContinuation.pure(e)
-        }
+        { () =>
+          Try(mapper(run())) match {
+            case Success(continuationB) =>
+              continuationB.start(continue)
+            case Failure(e) =>
+              UnitContinuation.pure(e)
+          }
+        }: UnitContinuation.SamTailCall[Throwable]
       }
 
-      def start(continueSuccess: A => Result) = {
+      def start(continueSuccess: A => Result): UnitContinuation.SamTailCall[Throwable] = { () =>
         Try(run()) match {
           case Success(a) =>
-            tailContinue(continueSuccess, a)
+            continueSuccess(a)
           case Failure(e) =>
             UnitContinuation.pure(e)
         }
