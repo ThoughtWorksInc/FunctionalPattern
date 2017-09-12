@@ -185,4 +185,24 @@ object covariant {
 
   }
 
+  trait MonadRaiiFactory extends MonadErrorFactory {
+
+    type State
+
+    type Facade[+A] <: MonadError[A]
+
+    trait MonadRaii[+A] extends Any with MonadError[A] {
+
+      /** Mark this [[MonadRaii]] as a nested block.
+        *
+        * All finalizers will be invoked when exiting the block.
+        */
+      def nestedBlock: Facade[A]
+    }
+
+    /** Add a finalizer to current block */
+    def addFinalizer(finalizer: Facade[Unit]): Facade[Unit]
+
+  }
+
 }
